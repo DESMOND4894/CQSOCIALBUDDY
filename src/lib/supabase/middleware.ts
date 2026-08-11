@@ -31,6 +31,8 @@ export async function updateSession(request: NextRequest) {
 
   // Allow webhook endpoints and public routes without auth
   const isPublicRoute =
+    (process.env.NODE_ENV === "development" &&
+      request.nextUrl.pathname.startsWith("/ads-agent-preview")) ||
     request.nextUrl.pathname.startsWith("/api/webhooks") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
     request.nextUrl.pathname.startsWith("/api/meta/auth/callback") ||

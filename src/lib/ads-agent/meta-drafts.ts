@@ -1,6 +1,6 @@
+import { graphPost, graphRead } from "./paused-graph";
 import { CELTIC_QUEST_PROVEN_TARGETING_BASELINE } from "./celtic-quest-context";
 
-const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 const ALLOWED_ACCOUNT_ID = "255186019073177";
 const ALLOWED_PIXEL_ID = "272943549577718";
 const ATTRIBUTION_SPEC = [
@@ -35,53 +35,21 @@ function requiredEnv(name: string) {
   return value;
 }
 
-async function graphPost(
-  path: string,
-  body: FormData | URLSearchParams,
-  token: string
-) {
-  const separator = path.includes("?") ? "&" : "?";
-  const response = await fetch(
-    `${GRAPH_API_BASE}/${path}${separator}access_token=${encodeURIComponent(token)}`,
-    { method: "POST", body }
-  );
-  const data = await response.json();
-  if (!response.ok || data.error) {
-    throw new Error(data.error?.message || `Meta request failed (${response.status}).`);
-  }
-  return data as { id?: string; images?: Record<string, { hash: string }> };
-}
-
 async function assertDraftDoesNotExist(
   accountPath: string,
-  campaignName: string,
-  token: string
+  campaignName: string
 ) {
-  let nextUrl: string | null =
-    `${GRAPH_API_BASE}/${accountPath}/campaigns?fields=id,name&limit=100` +
-    `&access_token=${encodeURIComponent(token)}`;
-  let pagesChecked = 0;
-
-  while (nextUrl && pagesChecked < 10) {
-    const response = await fetch(nextUrl);
-    const data = (await response.json()) as {
-      data?: Array<{ id: string; name: string }>;
-      paging?: { next?: string };
-      error?: { message?: string };
-    };
-    if (!response.ok || data.error) {
-      throw new Error(
-        data.error?.message || "Meta duplicate protection check failed."
-      );
+  let after: string | undefined;
+  do {
+    const data = await graphRead(`${accountPath}/campaigns`, {
+      fields: "id,name", limit: "100", ...(after ? { after } : {}),
+    });
+    if (data.data?.some((campaign: { name: string }) => campaign.name === campaignName)) {
+      throw new Error("Meta draft already exists; no duplicate created.");
     }
-    if (data.data?.some((campaign) => campaign.name === campaignName)) {
-      throw new Error(
-        "This approved draft already exists in Meta. No duplicate was created."
-      );
-    }
-    nextUrl = data.paging?.next ?? null;
-    pagesChecked += 1;
-  }
+    after = data.paging?.next ? data.paging?.cursors?.after : undefined;
+    if (data.paging?.next && !after) throw new Error("Meta duplicate check incomplete.");
+  } while (after);
 }
 
 export function getMetaAdsReadiness() {
@@ -126,7 +94,7 @@ export async function createPausedMetaDraft(input: MetaDraftInput) {
   const campaignName =
     `CQ ADS AGENT — ${input.name.toUpperCase()} — LEADS WEBSITE` +
     ` — CAMPAIGN — PAUSED` +
-    ` — ${dateStamp} [${draftKey}]`;
+    ` [${draftKey}]`;
   const adSetName =
     `CQ ADS AGENT — ${input.name.toUpperCase()}` +
     ` — AGE 25+ LOCAL — WEBSITE LEADS — LEAD EVENT UNVERIFIED` +
@@ -142,7 +110,7 @@ export async function createPausedMetaDraft(input: MetaDraftInput) {
     ` — PRIVATE CHARTER — AD — PAUSED` +
     ` — ${dateStamp} [${draftKey}]`;
 
-  await assertDraftDoesNotExist(accountPath, campaignName, token);
+  await assertDraftDoesNotExist(accountPath, campaignName);
 
   const campaign = await graphPost(
     `${accountPath}/campaigns`,

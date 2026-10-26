@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "meta:draft": "node scripts/meta.cjs draft",
+    "meta:report": "node scripts/meta.cjs report",
+    "meta:test": "node --test scripts/meta.test.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",
